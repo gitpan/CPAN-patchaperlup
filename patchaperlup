@@ -6,13 +6,13 @@ use Cwd;
 use Getopt::Long;
 use vars qw(%Opt $VERSION);
 
-$VERSION = sprintf "%.3f", (sprintf "%d.%03d", q$Revision: 1.11 $ =~ /(\d+)\.(\d+)/) - 1;
-# $Id: patchaperlup,v 1.11 2000/11/28 06:23:56 k Exp $
+$VERSION = sprintf "%.3f", (sprintf "%d.%03d", q$Revision: 1.13 $ =~ /(\d+)\.(\d+)/) - 1;
+# $Id: patchaperlup,v 1.13 2001/01/10 07:04:06 k Exp k $
 
 %Opt = ();
 
 # options get and build are undocumented as they might be considered bloatware
-GetOptions( \%Opt, qw( upto=i perldir=s diffdir=s nounlink! quiet! version+ verbose+) );
+GetOptions( \%Opt, qw( start=i upto=i perldir=s diffdir=s nounlink! quiet! version+ verbose+) );
 
 sub verbose {
   return if $Opt{quiet};
@@ -28,6 +28,7 @@ sub usage () {
   "Usage $0
     --perldir  perldirectory-to-alter
     --diffdir  patchdirectory
+    [--start   number-of-first-patch]
     [--upto    number-of-last-patch]
     [--quiet]
     [--verbose]
@@ -70,16 +71,24 @@ has the patches up to %d already applied. Skipping those not needed.
 
 my $latest = $diffs[-1];
 $latest =~ s/\D.*//;
-if ($Opt{upto}) {
-  if ($Opt{upto} > $latest) {
-    die "Invalid option for upto[$Opt{upto}].
-Latest patch in your diffdir is $latest\n";
-  } elsif ($Opt{upto}<$diffs[0]) {
-    die "Invalid option for upto[$Opt{upto}].
+for my $arg (qw(upto start)) {
+  if ($Opt{$arg}) {
+    if ($Opt{$arg} > $latest) {
+      warn "Option for $arg\[$Opt{$arg}] bigger than
+ latest[$latest]. Won't apply any patch.\a\n";
+      sleep 5;
+    }
+    if ($Opt{$arg}<$diffs[0]) {
+      die "Invalid option for $arg\[$Opt{$arg}].
 First patch in your diffdir is $diffs[0]\n";
-  } else {
-    pop @diffs while $diffs[-1] > $Opt{upto};
-    $latest = $Opt{upto};
+    } else {
+      if ($arg eq "upto") {
+        pop @diffs while @diffs && $diffs[-1] > $Opt{$arg};
+        $latest = $Opt{$arg};
+      } else {
+        shift @diffs while @diffs && $diffs[0] < $Opt{$arg};
+      }
+    }
   }
 }
 chdir $perldir or die "Couldn't chdir to $perldir: $!";
@@ -127,7 +136,7 @@ if (1) {
 
   if (@ARGV) {
     verbose "Removing CR from %d files:\n", scalar @ARGV;
-    $^I = "";
+    $^I = ";";
     my $i = 0;
     my $b = 0;
     while (<>) {
@@ -160,10 +169,25 @@ for my $d ( @diffs ){
     if ($ls eq "-: Changes") {
       warn "PAPU $d: Patch error on Changes file can be ignored\n";
     } elsif ($pout =~ /patch: \*\*\*\* Only garbage was found in the patch input./) {
-	warn "PAPU $d: These Only Garbage patch errors can be ignored.\n";
+      warn "PAPU $d: These Only Garbage patch errors can be ignored.\n";
     } else {
-      warn "Problem with patch $d\n";
-      push @fails, $d;
+      my @rej;
+      while ($pout =~ /saving rejects to (\S+).rej/gc){
+        push @rej, $1;
+      }
+
+      my %rej;
+      @rej{@rej}=();
+      for my $f (qw(Changes patchlevel.h)) {
+        delete $rej{$f};
+      }
+
+      if (! %rej) {
+        warn "PAPU $d: Rejects were only on [@rej]: these can usually be ignored\n";
+      } else {
+        warn "Problem with patch $d\n";
+        push @fails, $d;
+      }
     }
   }
 }
@@ -202,7 +226,8 @@ patchaperlup - apply a couple of patches in a perl source directory
 
   patchaperlup --perldir perldir
                --diffdir diffdir
-               [ --upto patch-number ]
+               [ --start patch-number ]
+               [ --upto  patch-number ]
                [ --quiet ]
                [ --version ]
 
@@ -247,7 +272,8 @@ When you have unpacked a recent perl, patchaperlup should be run as
 C<patchaperlup> checks which highest numbered patch has already been
 applied to the perl in the C<perldir>. The --upto argument defaults to
 the highest numbered patch in the directory given by the --diffdir
-argument.
+argument. The --start argument defaults to the last patch referenced
+in the Changes file in the untarred perl sources.
 
 The batch job is pretty verbose and explains what it is doing. The
 reason for the verbosity was that it can take a while until

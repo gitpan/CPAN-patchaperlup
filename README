@@ -4,7 +4,8 @@ NAME
 SYNOPSIS
       patchaperlup --perldir perldir
                    --diffdir diffdir
-                   [ --upto patch-number ]
+                   [ --start patch-number ]
+                   [ --upto  patch-number ]
                    [ --quiet ]
                    [ --version ]
 
@@ -43,17 +44,18 @@ DESCRIPTION
 
       perl patchaperlup --perldir perl5.5.660 --diffdir diffs
 
-    'patchaperlup' checks which highest numbered patch has already been
-    applied to the perl in the 'perldir'. The --upto argument defaults to
+    "patchaperlup" checks which highest numbered patch has already been
+    applied to the perl in the "perldir". The --upto argument defaults to
     the highest numbered patch in the directory given by the --diffdir
-    argument.
+    argument. The --start argument defaults to the last patch referenced in
+    the Changes file in the untarred perl sources.
 
     The batch job is pretty verbose and explains what it is doing. The
     reason for the verbosity was that it can take a while until
-    'patchaperlup' is finishing. Verbosity can be turned off with the
+    "patchaperlup" is finishing. Verbosity can be turned off with the
     --quiet switch and increased with the --verbose switch.
 
-    'patchaperlup' prints a few mail-header-like lines to standard output,
+    "patchaperlup" prints a few mail-header-like lines to standard output,
     namely
 
       Version: version of patchaperlup
@@ -83,8 +85,8 @@ EXAMPLE
     not report unnecessary errors.
 
 PREREQUISITES
-    The programs 'zcat' and 'patch' must be in your path. Likewise 'perl'
-    must be available in the path to run the utility 'patchls' which can be
+    The programs "zcat" and "patch" must be in your path. Likewise "perl"
+    must be available in the path to run the utility "patchls" which can be
     found in recent perl distributions.
 
 AUTHOR
