@@ -6,8 +6,8 @@ use Cwd;
 use Getopt::Long;
 use vars qw(%Opt $VERSION);
 
-$VERSION = sprintf "%.3f", (sprintf "%d.%03d", q$Revision: 1.2 $ =~ /(\d+)\.(\d+)/) - 1;
-# $Id: patchaperlup,v 1.2 2000/02/26 14:26:55 k Exp k $
+$VERSION = sprintf "%.3f", (sprintf "%d.%03d", q$Revision: 1.3 $ =~ /(\d+)\.(\d+)/) - 1;
+# $Id: patchaperlup,v 1.3 2000/02/27 03:15:59 k Exp k $
 
 %Opt = ();
 
@@ -24,13 +24,20 @@ if ($Opt{version}) {
   exit;
 }
 
-my $perldir = $Opt{perldir} or
-    die "Usage $0 --perldir perldirectory-to-alter
-    [--diffdir patchdirectory]
-    [--upto number-of-last-patch]
+sub usage () {
+  "Usage $0
+    --perldir  perldirectory-to-alter
+    --diffdir  patchdirectory
+    [--upto    number-of-last-patch]
     [--quiet]
     [--version]";
+}
+
+my $perldir = $Opt{perldir} or die usage;
+my $diffdir = $Opt{diffdir} or die usage;
+
 die "perldir[$perldir] not found" unless -d $perldir;
+print "Perldir: $perldir\n";
 open F, "$perldir/Changes" or die "Couldn't open $perldir/Changes: $!";
 my $already_patched;
 while (<F>) {
@@ -40,10 +47,6 @@ while (<F>) {
 }
 $|=1;
 
-my $diffdir = $Opt{diffdir};
-# as default we assume the directory that wget chooses if we called wget
-$diffdir = "ftp.linux.activestate.com/pub/staff/gsar/APC/diffs"
-    unless defined $diffdir;
 die "diffdir[$diffdir] not found" unless -d $diffdir;
 print "Diffdir: $diffdir\n";
 my $diffdir_abs = File::Spec->file_name_is_absolute($diffdir) ?
@@ -71,9 +74,7 @@ First patch in your diffdir is $diffs[0]\n";
   }
 }
 chdir $perldir or die "Couldn't chdir to $perldir: $!";
-print "Perldir: $perldir\n";
 my @fails;
-my %topatch;
 verbose "Prescanning all patch files for contents\n";
 my $tmpfile = "tmp.patchls.$$";
 open F, "| perl Porting/patchls - > $tmpfile";
@@ -87,31 +88,44 @@ for my $d ( @diffs ){
   close G;
 }
 close F;
-open F, $tmpfile or die;
+verbose "\n";
+
+open F, $tmpfile or die "Couldn't open $tmpfile: $!";
+my %pfiles;
 while (<F>) {
   s/^-:\s//;
   chomp $_;
-  my @topatch = grep { -f $_ } split m{ }, $_;
-  @topatch{@topatch} = ();
+  my @pfiles = grep { -f $_ } split m{ }, $_;
+  @pfiles{@pfiles} = ();
 }
 close F;
 unlink $tmpfile;
-@ARGV = keys %topatch;
-die "No files to patch. Unexpected error" unless @ARGV;
-verbose "\nRemoving CR from %d files\n", scalar @ARGV;
-$^I = "";
-my $i = 0;
-my $b = 0;
-while (<>) {
-  s/\r$//;
-  print;
-  if (eof(ARGV)){
-    $b += -s $ARGV;
-    verbose "\r%5d files, %6d lines, %7d characters", ++$i, $., $b;
-  }
+
+sub contains_cr {
+  my($file) = shift;
+  open F, $file or die "Couldn't open $file: $!";
+  local($/) = "\n";
+  my $firstline = <F>;
+  $firstline =~ /\cM/;
 }
-my $lines = $.;
-verbose "\n";
+
+@ARGV = grep contains_cr($_), keys %pfiles;
+
+if (@ARGV) {
+  verbose "Removing CR from %d files\n", scalar @ARGV;
+  $^I = "";
+  my $i = 0;
+  my $b = 0;
+  while (<>) {
+    s/\r$//;
+    print;
+    if (eof(ARGV)){
+      verbose "\r%5d files, %6d lines", ++$i, $.;
+    }
+  }
+  my $lines = $.;
+  verbose "\n";
+}
 for my $d ( @diffs ){
   my $pathdiff = "$diffdir_abs/$d.gz";
   if (system ("zcat $pathdiff | patch -s -p1 -N")==0) {
@@ -119,7 +133,7 @@ for my $d ( @diffs ){
   } else {
     push @fails, $d;
   }
-  verbose "\rapplied %s", $d;
+  verbose "\rapplied patch # %s", $d;
 }
 verbose "\n";
 if (@fails) {
@@ -145,49 +159,76 @@ patchaperlup - apply a couple of patches in a perl source directory
 =head1 SYNOPSIS
 
   patchaperlup --perldir perldir
-               [ --diffdir diffdir ]
+               --diffdir diffdir
                [ --upto patch-number ]
                [ --quiet ]
                [ --version ]
 
 =head1 DESCRIPTION
 
-This utility runs a batch of jobs that upgrade the most recent
-development perl with the bleeding edge patches to produce a snapshot
-of the current committed development version of perl. Patching up to a
-certain patchnumber is also supported.
+This utility runs a batch of jobs that upgrade a recent development
+perl with selected patches to produce a recent development snapshot of
+perl.
 
 The status of this script is very alpha as the applicability of the
 assumptions about where the current patches are, how they are named
-and treated, etc. has not been discussed with the pumpking and the
-perl community. The script is only reflecting current practice which
-is subject to change without notice.
+and treated, etc. are unstable. The script is only reflecting current
+practice which is subject to change without notice.
 
-The idea is the following:
+There are currently the following places to access the Archive of Perl
+Changes (APC):
 
-The user untars a recent perl distribution, mirrors the pumkin's patch
-repository, runs this C<patchaperlup> utility, and runs the perl
-build commands as usual.
+=over
+
+=item ftp://ftp.linux.activestate.com/pub/staff/gsar/APC/
+
+A voluminous complete history of all changes since 5.005_58. The
+00README file there is recommended for details about the status of the
+APC.
+
+=item rsync://ftp.linux.activestate.com/perl-current/
+
+The perl-current directory of the APC.
+
+=item rsync://ftp.linux.activestate.com/perl-diffs/
+
+The diffs directory of the APC. This contains patches for each change
+submitted to the Perl repository since the last release.
+
+=back
+
+To get a copy of today's perl you'd just do
+
+  rsync -auvz rsync://ftp.linux.activestate.com/perl-current/ perl-current
+
+If you're hunting for a bug though, you'd like to try several
+different recent perls. That's where you want to have the C<diffs/>
+directory mirrored and use patchapaerlup to get apply selected
+patches.
+
+The alternative way to get today's perl is the following. Untar a
+recent perl distribution, mirror the C<diffs/> directory, run
+this C<patchaperlup> utility, and run the perl build commands as
+usual.
 
 Untarring a recent perl snapshot is usually done with the tar command,
 say
 
   tar xvzf /local/path/to/perl5.5.660.tar.gz
 
-Mirroring the pumpkin's patch repositury can be done with C<wget>,
+Mirroring the pumpkin's patch repositury can be done with C<rsync>,
 e.g.
 
-  wget -r -m -v ftp://ftp.linux.activestate.com/pub/staff/gsar/APC/diffs
+  rsync -auvz rsync://ftp.linux.activestate.com/diffs diffs
 
 Now patchaperlup could be run as
 
-  perl patchaperlup --perldir perl5.5.660 \
-    --diffdir ftp.linux.activestate.com/pub/staff/gsar/APC/diffs
+  perl patchaperlup --perldir perl5.5.660 --diffdir diffs
 
-The --diffdir parameter defaults to the above one, so this command
-could be abbreviated to
-
-  perl patchaperlup --perldir perl5.5.660
+C<patchaperlup> checks which highest numbered patch has already been
+applied to the perl in the C<perldir>. The --upto argument defaults to
+the highest numbered patch in the directory given by the --diffdir
+argument.
 
 The batch job is pretty verbose and explains what it is doing. The
 reason for the verbosity was that it can take a while until
@@ -216,8 +257,8 @@ your nearest CPAN site in line 2:
   DEVPERL=perl5.5.660
   wget -m -nd -v ftp://cpan.host.and.path/authors/id/GSAR/$DEVPERL.tar.gz
   tar xzf $DEVPERL.tar.gz
-  wget -r -m -v ftp://ftp.linux.activestate.com/pub/staff/gsar/APC/diffs
-  patchaperlup --perldir $DEVPERL > patchaperlup.out
+  rsync -auvz rsync://ftp.linux.activestate.com/diffs diffs
+  patchaperlup --perldir $DEVPERL --diffdir diffs > patchaperlup.out
   LPATCH=`awk '$1=="Lastpatch:"{print $2}' patchaperlup.out`
   mv $DEVPERL $DEVPERL..$LPATCH
   cd $DEVPERL..$LPATCH && ./Configure -des && make test

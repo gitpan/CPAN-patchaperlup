@@ -1,0 +1,104 @@
+NAME
+    patchaperlup - apply a couple of patches in a perl source directory
+
+SYNOPSIS
+      patchaperlup --perldir perldir
+                   --diffdir diffdir
+                   [ --upto patch-number ]
+                   [ --quiet ]
+                   [ --version ]
+
+DESCRIPTION
+    This utility runs a batch of jobs that upgrade a recent development perl
+    with selected patches to produce a recent development snapshot of perl.
+
+    The status of this script is very alpha as the applicability of the
+    assumptions about where the current patches are, how they are named and
+    treated, etc. are unstable. The script is only reflecting current
+    practice which is subject to change without notice.
+
+    There are currently the following places to access the Archive of Perl
+    Changes (APC):
+
+    ftp://ftp.linux.activestate.com/pub/staff/gsar/APC/
+        A voluminous complete history of all changes since 5.005_58. The
+        00README file there is recommended for details about the status of
+        the APC.
+
+    rsync://ftp.linux.activestate.com/perl-current/
+        The perl-current directory of the APC.
+
+    rsync://ftp.linux.activestate.com/perl-diffs/
+        The diffs directory of the APC. This contains patches for each
+        change submitted to the Perl repository since the last release.
+
+    To get a copy of today's perl you'd just do
+
+      rsync -auvz rsync://ftp.linux.activestate.com/perl-current/ perl-current
+
+    If you're hunting for a bug though, you'd like to try several different
+    recent perls. That's where you want to have the `diffs/' directory
+    mirrored and use patchapaerlup to get apply selected patches.
+
+    The alternative way to get today's perl is the following. Untar a recent
+    perl distribution, mirror the `diffs/' directory, run this
+    `patchaperlup' utility, and run the perl build commands as usual.
+
+    Untarring a recent perl snapshot is usually done with the tar command,
+    say
+
+      tar xvzf /local/path/to/perl5.5.660.tar.gz
+
+    Mirroring the pumpkin's patch repositury can be done with `rsync', e.g.
+
+      rsync -auvz rsync://ftp.linux.activestate.com/diffs diffs
+
+    Now patchaperlup could be run as
+
+      perl patchaperlup --perldir perl5.5.660 --diffdir diffs
+
+    `patchaperlup' checks which highest numbered patch has already been
+    applied to the perl in the `perldir'. The --upto argument defaults to
+    the highest numbered patch in the directory given by the --diffdir
+    argument.
+
+    The batch job is pretty verbose and explains what it is doing. The
+    reason for the verbosity was that it can take a while until
+    `patchaperlup' is finishing.
+
+    `patchaperlup' prints a few mail-header-like lines to standard output,
+    namely
+
+      Version: version of patchaperlup
+      Perldir: perl directory
+      Diffdir: directory containing the patches
+      Firstpatch: number of the first applied patch
+      Lastpatch: number of the last applied patch
+
+    All other diagnostics are written to STDERR. These can be turned off
+    with the --quiet switch.
+
+    The --version switch prints the version and exits.
+
+EXAMPLE
+    The following shell script built that day's perl at the time of writing
+    and stuffed it into a directory of its own. Please fill in your nearest
+    CPAN site in line 2:
+
+      DEVPERL=perl5.5.660
+      wget -m -nd -v ftp://cpan.host.and.path/authors/id/GSAR/$DEVPERL.tar.gz
+      tar xzf $DEVPERL.tar.gz
+      rsync -auvz rsync://ftp.linux.activestate.com/diffs diffs
+      patchaperlup --perldir $DEVPERL --diffdir diffs > patchaperlup.out
+      LPATCH=`awk '$1=="Lastpatch:"{print $2}' patchaperlup.out`
+      mv $DEVPERL $DEVPERL..$LPATCH
+      cd $DEVPERL..$LPATCH && ./Configure -des && make test
+
+PREREQUISITES
+    The programs `zcat' and `patch' must be in your path. Likewise `perl'
+    must be available in the path to run the utility `patchls' which can be
+    found in recent perl distributions.
+
+AUTHOR
+    Andreas Koenig <andreas.koenig@anima.de>
+
