@@ -64,7 +64,8 @@ DESCRIPTION
 
     The batch job is pretty verbose and explains what it is doing. The
     reason for the verbosity was that it can take a while until
-    `patchaperlup' is finishing.
+    `patchaperlup' is finishing. Verbosity can be turned off with the
+    --quiet switch and increased with the --verbose switch.
 
     `patchaperlup' prints a few mail-header-like lines to standard output,
     namely
@@ -74,9 +75,6 @@ DESCRIPTION
       Diffdir: directory containing the patches
       Firstpatch: number of the first applied patch
       Lastpatch: number of the last applied patch
-
-    All other diagnostics are written to STDERR. These can be turned off
-    with the --quiet switch.
 
     The --version switch prints the version and exits.
 
@@ -93,6 +91,11 @@ EXAMPLE
       LPATCH=`awk '$1=="Lastpatch:"{print $2}' patchaperlup.out`
       mv $DEVPERL $DEVPERL..$LPATCH
       cd $DEVPERL..$LPATCH && ./Configure -des && make test
+
+    If all patches from the APC are merged into a single diffs directory, it
+    is possible to run the above example with any DEVPERL from 5.005_58
+    upwards. At the time of writing lThere are some tiny patch problems if
+    you do that, I haven't investigated how serious they are.
 
 PREREQUISITES
     The programs `zcat' and `patch' must be in your path. Likewise `perl'

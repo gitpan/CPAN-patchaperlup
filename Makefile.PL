@@ -4,7 +4,7 @@ WriteMakefile(
               VERSION_FROM => "patchaperlup",
               EXE_FILES => ["patchaperlup"],
               dist => {
-                       PREOP => 'pod2text patchaperlup > README',
+                       PREOP => 'pod2text patchaperlup > ${DISTVNAME}/README',
                       }
              );
 

@@ -6,13 +6,13 @@ use Cwd;
 use Getopt::Long;
 use vars qw(%Opt $VERSION);
 
-$VERSION = sprintf "%.3f", (sprintf "%d.%03d", q$Revision: 1.3 $ =~ /(\d+)\.(\d+)/) - 1;
-# $Id: patchaperlup,v 1.3 2000/02/27 03:15:59 k Exp k $
+$VERSION = sprintf "%.3f", (sprintf "%d.%03d", q$Revision: 1.4 $ =~ /(\d+)\.(\d+)/) - 1;
+# $Id: patchaperlup,v 1.4 2000/02/27 09:58:26 k Exp k $
 
 %Opt = ();
 
 # options get and build are undocumented as they might be considered bloatware
-GetOptions( \%Opt, qw( upto=i perldir=s diffdir=s quiet! version+) );
+GetOptions( \%Opt, qw( upto=i perldir=s diffdir=s quiet! version+ verbose+) );
 
 sub verbose {
   return if $Opt{quiet};
@@ -30,11 +30,13 @@ sub usage () {
     --diffdir  patchdirectory
     [--upto    number-of-last-patch]
     [--quiet]
+    [--verbose]
     [--version]";
 }
 
 my $perldir = $Opt{perldir} or die usage;
 my $diffdir = $Opt{diffdir} or die usage;
+$Opt{verbose} ||= 0;
 
 die "perldir[$perldir] not found" unless -d $perldir;
 print "Perldir: $perldir\n";
@@ -59,6 +61,12 @@ has the patches up to %d already applied. Skipping those not needed.
 ", $diffs[0], $already_patched;
   shift @diffs while $diffs[0] <= $already_patched;
 }
+
+# Now it is possible that the first patch we have here is only
+# patching the Changes file and that this patch has already been
+# applied during the release. We need to be more tolerant on the first
+# patch.
+
 my $latest = $diffs[-1];
 $latest =~ s/\D.*//;
 if ($Opt{upto}) {
@@ -126,19 +134,36 @@ if (@ARGV) {
   my $lines = $.;
   verbose "\n";
 }
+my $patchcommand = sprintf(
+                           "patch %s -p1 -N",
+                           $Opt{verbose}>0 ? "" : "-s"
+                          );
+
 for my $d ( @diffs ){
   my $pathdiff = "$diffdir_abs/$d.gz";
-  if (system ("zcat $pathdiff | patch -s -p1 -N")==0) {
-    print "Firstpatch: $d\n" if $d==$diffs[0];
+  verbose "\rapplying patch # %s.\n", $d if $Opt{verbose}>0;
+  print "Firstpatch: $d\n" if $d==$diffs[0];
+  if (system("zcat $pathdiff | $patchcommand")==0) {
+    verbose "\rapplied patch # %s.%s", $d, $Opt{verbose}>0 ? "\n" : " ";
+  } elsif ($d==$diffs[0]) {
+    # need to be tolerant with first patch (see above)
+    my $ls = `zcat $pathdiff | perl Porting/patchls - `;
+    chomp $ls;
+    if ($ls eq "-: Changes") {
+      warn "Patch error on Changes file can be ignored\n";
+    } else {
+      warn "Problem with patch $d\n";
+      push @fails, $d;
+    }
   } else {
+    warn "Problem with patch $d\n";
     push @fails, $d;
   }
-  verbose "\rapplied patch # %s", $d;
 }
 verbose "\n";
 if (@fails) {
   verbose "The following patches had errors:\n";
-  verbose map {"\t$_\n"} @fails;
+  verbose join "", map {"\t$_\n"} @fails;
   verbose "\n";
   die "Errors while patching\n";
 } else {
@@ -232,7 +257,8 @@ argument.
 
 The batch job is pretty verbose and explains what it is doing. The
 reason for the verbosity was that it can take a while until
-C<patchaperlup> is finishing.
+C<patchaperlup> is finishing. Verbosity can be turned off with the
+--quiet switch and increased with the --verbose switch.
 
 C<patchaperlup> prints a few mail-header-like lines to standard
 output, namely
@@ -242,9 +268,6 @@ output, namely
   Diffdir: directory containing the patches
   Firstpatch: number of the first applied patch
   Lastpatch: number of the last applied patch
-
-All other diagnostics are written to STDERR. These can be turned off
-with the --quiet switch.
 
 The --version switch prints the version and exits.
 
@@ -262,6 +285,11 @@ your nearest CPAN site in line 2:
   LPATCH=`awk '$1=="Lastpatch:"{print $2}' patchaperlup.out`
   mv $DEVPERL $DEVPERL..$LPATCH
   cd $DEVPERL..$LPATCH && ./Configure -des && make test
+
+If all patches from the APC are merged into a single diffs directory,
+it is possible to run the above example with any DEVPERL from 5.005_58
+upwards. At the time of writing lThere are some tiny patch problems if
+you do that, I haven't investigated how serious they are.
 
 =head1 PREREQUISITES
 
