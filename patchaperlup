@@ -6,8 +6,8 @@ use Cwd;
 use Getopt::Long;
 use vars qw(%Opt $VERSION);
 
-$VERSION = sprintf "%.3f", (sprintf "%d.%03d", q$Revision: 1.13 $ =~ /(\d+)\.(\d+)/) - 1;
-# $Id: patchaperlup,v 1.13 2001/01/10 07:04:06 k Exp k $
+$VERSION = sprintf "%.3f", (sprintf "%d.%03d", q$Revision: 1.14 $ =~ /(\d+)\.(\d+)/) - 1;
+# $Id: patchaperlup,v 1.14 2001/05/23 06:03:12 k Exp k $
 
 %Opt = ();
 
@@ -140,7 +140,8 @@ if (1) {
     my $i = 0;
     my $b = 0;
     while (<>) {
-      s/\r$//;
+      # in 5.7.1 we had files that contained 0x0d0d0a on line endings
+      s/[\r\n]+\z/\n/;
       print;
       if (eof(ARGV)){
         verbose "%s\n", $ARGV;
@@ -182,11 +183,11 @@ for my $d ( @diffs ){
         delete $rej{$f};
       }
 
-      if (! %rej) {
-        warn "PAPU $d: Rejects were only on [@rej]: these can usually be ignored\n";
-      } else {
+      if (%rej) {
         warn "Problem with patch $d\n";
         push @fails, $d;
+      } else {
+        warn "PAPU $d: Rejects were only on [@rej]: these can usually be ignored\n";
       }
     }
   }
