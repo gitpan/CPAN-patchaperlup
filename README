@@ -56,8 +56,9 @@ DESCRIPTION
 
 PREREQUISITES
     The programs "zcat" and "patch" must be in your path. Likewise "perl"
-    must be available in the path to run the utility "patchls" which can be
-    found in recent perl distributions.
+    and the utility "patchls" (which can be found in recent perl
+    distributions) must be available in the path. "patchls" must not be too
+    old (the one with 5.8.0 is OK).
 
 AUTHOR
     Andreas Koenig <andreas.koenig@anima.de>

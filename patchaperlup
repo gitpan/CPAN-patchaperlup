@@ -6,8 +6,8 @@ use Cwd;
 use Getopt::Long;
 use vars qw(%Opt $VERSION);
 
-$VERSION = sprintf "%.3f", (sprintf "%d.%03d", q$Revision: 1.24 $ =~ /(\d+)\.(\d+)/) - 1;
-# $Id: patchaperlup,v 1.24 2002/08/28 05:36:35 k Exp $
+$VERSION = sprintf "%.3f", (sprintf "%d.%03d", q$Revision: 1.25 $ =~ /(\d+)\.(\d+)/) - 1;
+# $Id: patchaperlup,v 1.25 2003/01/19 16:31:56 k Exp k $
 
 %Opt = ();
 
@@ -44,9 +44,16 @@ print "Perldir: $perldir\n";
 open F, "$perldir/Changes" or die "Couldn't open $perldir/Changes: $!";
 my $already_patched;
 while (<F>) {
-  next unless /^\[\s*(\d+)\]\sBy:\s/;
+  next unless /^\[\s*(\d+)\]\sBy:\s/; # //;
   $already_patched = $1;
   last;
+}
+unless ($already_patched) {
+  warn "Could not determine last integrated patch via $perldir/Changes";
+  unless ($Opt{start}) {
+    die "Need --start option to determine the first patch to apply";
+  }
+  $already_patched = $Opt{start}-1;
 }
 $|=1;
 
@@ -54,9 +61,11 @@ die "diffdir[$diffdir] not found" unless -d $diffdir;
 print "Diffdir: $diffdir\n";
 my $diffdir_abs = File::Spec->file_name_is_absolute($diffdir) ?
     $diffdir : File::Spec->catdir(Cwd::cwd,$diffdir);
-opendir DIR, $diffdir_abs or die "Couldnt opendir";
+opendir DIR, $diffdir_abs or die "Couldn't opendir $diffdir_abs: $!";
 my @diffs = sort { $a <=> $b } grep s/^(\d+)\.gz/$1/, readdir DIR;
 my $first_diff = $diffs[0];
+die "\$already_patched undefined!" unless defined $already_patched;
+die "\$diffs[0] undefined!" unless defined $diffs[0];
 if ($already_patched > $diffs[0]) {
   verbose "Your patchdirectory starts with patch %d, but your perldir
 has the patches up to %d already applied. Skipping those not needed.
@@ -94,7 +103,9 @@ chdir $perldir or die "Couldn't chdir to $perldir: $!";
 my @fails;
 verbose "Prescanning all patch files for contents\n";
 my $tmpfile = "tmp.patchls.$$";
-open F, "| perl Porting/patchls - > $tmpfile";
+my $patchls = find_patchls() or
+    die "Couldn't find patchls utility in PATH nor in Porting/ directory";
+open F, "| perl $patchls - > $tmpfile";
 for my $d ( @diffs ){
   verbose "\r%10s of %10s to %10s", $d, $diffs[0], $diffs[-1];
   my $pathdiff = "$diffdir_abs/$d.gz";
@@ -181,6 +192,12 @@ for my $d ( @diffs ){
   # First do the deletes, they are not line by line in the patches
   local *Z;
   open Z, "zcat $pathdiff |";
+  my $indexseen;
+  while (<Z>) {
+    $indexseen++, last if /^Index/;
+  }
+  next unless $indexseen; # pre-filter garbage patches
+  open Z, "zcat $pathdiff |";
   while (<Z>) {
     last if /^Differences\s/;
     next unless m{^\s*\.\.\. //.+perl/(.+)#\d+ delete$};
@@ -212,11 +229,12 @@ for my $d ( @diffs ){
   my $pout = <$pouth>;
   close $pouth;
   unlink $poutf or die "Could not unlink $poutf: $!";
-  warn "\n----stdout+err patching $d (ret=$poutfail)---\n$pout----EOF----\n" if $pout;
+  warn "\n----stdout+err patching $d (ret=$poutfail)---\n$pout----EOF----\n"
+      if $pout || $poutfail;
   if ($poutfail == 0) {
     verbose "\rapplied patch # %s.%s", $d, $Opt{verbose}>0 ? "\n" : " ";
   } else {
-    my $ls = `zcat $pathdiff | perl Porting/patchls -`;
+    my $ls = `zcat $pathdiff | perl $patchls -`;
     chomp $ls;
     if ($ls eq "-: Changes") {
       warn "PAPU $d: Patch error on 'Changes' file ignored.\n";
@@ -236,15 +254,20 @@ for my $d ( @diffs ){
         for my $f (qw(Changes patchlevel.h)) {
           delete $rej{$f};
         }
-        my @rej2 = keys %rej;
-        if (@rej2) {
-          warn "Problem with patch $d (files: @rej2)\n";
-          push @fails, $d;
+        if ($d==4475 && exists $rej{"djgpp/configure.bat"}) {
+          warn "Known problem patch 4475 seems harmless: ignoring";
         } else {
-          warn "PAPU $d: Rejects were only on [@rej1]: these can usually be ignored\n";
+          my @rej2 = keys %rej;
+          if (@rej2) {
+            warn "Problem with patch $d (files: @rej2)\n";
+            push @fails, $d;
+          } else {
+            warn "PAPU $d: Rejects were only on [@rej1]: these can usually be ignored\n";
+          }
         }
       } else {
         # all other sorts of errors
+        warn "Registering as a failing patch d[$d]";
         push @fails, $d;
       }
     }
@@ -285,6 +308,18 @@ verbose qq{Now you can make a new perl by running e.g.:
   cd $perldir && ./Configure -des && make test
 };
 
+sub find_patchls {
+  use File::Spec;
+  my $res;
+  for my $p (File::Spec->path, "Porting") {
+    my $t = File::Spec->catfile($p,"patchls");
+    if (-x $t) {
+      $res = $t;
+      last;
+    }
+  }
+  $res ? File::Spec->rel2abs($res) : 0;
+}
 
 __END__
 
@@ -350,8 +385,9 @@ The --version switch prints the version and exits.
 =head1 PREREQUISITES
 
 The programs C<zcat> and C<patch> must be in your path. Likewise
-C<perl> must be available in the path to run the utility C<patchls>
-which can be found in recent perl distributions.
+C<perl> and the utility C<patchls> (which can be found in recent perl
+distributions) must be available in the path. C<patchls> must not be
+too old (the one with 5.8.0 is OK).
 
 =head1 AUTHOR
 
