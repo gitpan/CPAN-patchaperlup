@@ -10,37 +10,16 @@ SYNOPSIS
                    [ --version ]
 
 DESCRIPTION
-    This utility runs a batch of jobs that upgrade a recent development perl
-    with selected patches to produce a recent development snapshot of perl.
+    This utility runs a batch of jobs that upgrade an arbitrary source
+    snapshot of perl with selected numbered patches to produce another
+    snapshot of perl. It is designed to be called from other utilities (such
+    as apc-buildaperl) that implement a source repository in the broader
+    sense.
 
-    The status of this script is alpha as the applicability of the
-    assumptions about where the current patches are, how they are named and
-    treated, etc. are unstable. The script is only reflecting current
-    practice which is subject to change without notice.
+    How to get at perl patches is described in the perlhack manpage.
 
-    How to get at the patches is described in the perlhack manpage.
-
-    Be careful though, Sarathy posted a recommendation:
-
-      From: Gurusamy Sarathy <gsar@ActiveState.com>
-      Subject: Re: rsync'ed patches vs. rsync'ed source 
-      Date: Wed, 01 Nov 2000 09:58:08 -0800
-
-      I'd strongly recommend sticking with rsync.
-
-      The rsync mirror is automatic and syncs with the repository every five
-      minutes.
-
-      Updating the patch area still requires manual intervention (with all
-      the goofiness that implies, which you've noted) and is typically on
-      a daily cycle.  Making this process automatic is on my tuit list,
-      but don't ask me when.
-
-    I take it that for the real recent perl of the day, you should use rsync
-    to the perl-current area, but if you want to track down when a bug was
-    introduced or fixed, the patch repository is the natural choice.
-
-    When you have unpacked a recent perl, patchaperlup should be run as
+    When you have unpacked a perl source tarball or otherwise produced a
+    source snapshot, patchaperlup should be run as
 
       perl patchaperlup --perldir perl5.5.660 --diffdir diffs
 
@@ -48,15 +27,22 @@ DESCRIPTION
     applied to the perl in the "perldir". The --upto argument defaults to
     the highest numbered patch in the directory given by the --diffdir
     argument. The --start argument defaults to the last patch referenced in
-    the Changes file in the untarred perl sources.
+    the Changes file in the untarred perl sources plus one.
+
+    So the above command is equivalent to something like
+
+      perl patchaperlup --perldir perl5.5.660 --diffdir diffs \
+           --start 5199 --upto 12345
+
+    depending on the contents of your diffdir. (perl5.5.660 had finished
+    with patch 5198.)
 
     The batch job is pretty verbose and explains what it is doing. The
-    reason for the verbosity was that it can take a while until
+    reason for the verbosity is that it can take a while until
     "patchaperlup" is finishing. Verbosity can be turned off with the
     --quiet switch and increased with the --verbose switch.
 
-    "patchaperlup" prints a few mail-header-like lines to standard output,
-    namely
+    "patchaperlup" prints a few mail-header-like lines to STDOUT, namely
 
       Version: version of patchaperlup
       Perldir: perl directory
@@ -64,25 +50,9 @@ DESCRIPTION
       Firstpatch: number of the first applied patch
       Lastpatch: number of the last applied patch
 
+    everything else is printed to STDERR.
+
     The --version switch prints the version and exits.
-
-EXAMPLE
-    The following shell script built today's perl and stuffed it into a
-    directory of its own. Please fill in your own path to DEVPERL.
-
-      DEVPERL=perl-5.7.0
-      tar xzf /path/to/devperl/$DEVPERL.tar.gz
-      rsync -avz rsync://ftp.linux.activestate.com/diffs diffs
-      patchaperlup --perldir $DEVPERL --diffdir diffs > patchaperlup.out
-      LPATCH=`awk '$1=="Lastpatch:"{print $2}' patchaperlup.out`
-      mv $DEVPERL $DEVPERL@$LPATCH
-      cd $DEVPERL@$LPATCH && ./Configure -des && make test
-
-    If all patches from the APC are merged into a single diffs directory, it
-    is possible to run the above example with any DEVPERL from 5.005_58
-    upwards. At the time of writing, there were some tiny patch problems if
-    you do that. I'm planning to special-case them so that patchaperlup does
-    not report unnecessary errors.
 
 PREREQUISITES
     The programs "zcat" and "patch" must be in your path. Likewise "perl"

@@ -6,12 +6,11 @@ use Cwd;
 use Getopt::Long;
 use vars qw(%Opt $VERSION);
 
-$VERSION = sprintf "%.3f", (sprintf "%d.%03d", q$Revision: 1.20 $ =~ /(\d+)\.(\d+)/) - 1;
-# $Id: patchaperlup,v 1.20 2001/11/08 07:28:13 k Exp k $
+$VERSION = sprintf "%.3f", (sprintf "%d.%03d", q$Revision: 1.24 $ =~ /(\d+)\.(\d+)/) - 1;
+# $Id: patchaperlup,v 1.24 2002/08/28 05:36:35 k Exp $
 
 %Opt = ();
 
-# options get and build are undocumented as they might be considered bloatware
 GetOptions( \%Opt, qw( start=i upto=i perldir=s diffdir=s nounlink! quiet! version+ verbose+) );
 
 sub verbose {
@@ -57,6 +56,7 @@ my $diffdir_abs = File::Spec->file_name_is_absolute($diffdir) ?
     $diffdir : File::Spec->catdir(Cwd::cwd,$diffdir);
 opendir DIR, $diffdir_abs or die "Couldnt opendir";
 my @diffs = sort { $a <=> $b } grep s/^(\d+)\.gz/$1/, readdir DIR;
+my $first_diff = $diffs[0];
 if ($already_patched > $diffs[0]) {
   verbose "Your patchdirectory starts with patch %d, but your perldir
 has the patches up to %d already applied. Skipping those not needed.
@@ -69,22 +69,21 @@ has the patches up to %d already applied. Skipping those not needed.
 # applied during the release. We need to be more tolerant on the first
 # patch.
 
-my $latest = $diffs[-1];
-$latest =~ s/\D.*//;
+my $latest_diff = $diffs[-1];
+$latest_diff =~ s/\D.*//;
 for my $arg (qw(upto start)) {
   if ($Opt{$arg}) {
-    if ($Opt{$arg} > $latest) {
+    if ($Opt{$arg} > $latest_diff) {
       warn "Option for $arg\[$Opt{$arg}] bigger than
- latest[$latest]. Won't apply any patch.\a\n";
+ latest[$latest_diff]. Won't apply any patch.\a\n";
       sleep 5;
     }
     if ($Opt{$arg}<$diffs[0]) {
-      die "Invalid option for $arg\[$Opt{$arg}].
-First patch in your diffdir is $diffs[0]\n";
+      die "Invalid option for $arg\[$Opt{$arg}], must be between $first_diff and $latest_diff\n";
     } else {
       if ($arg eq "upto") {
         pop @diffs while @diffs && $diffs[-1] > $Opt{$arg};
-        $latest = $Opt{$arg};
+        $latest_diff = $Opt{$arg};
       } else {
         shift @diffs while @diffs && $diffs[0] < $Opt{$arg};
       }
@@ -103,7 +102,7 @@ for my $d ( @diffs ){
   open G, "zcat $pathdiff|";
   local $/;
   print F <G>;
-  close G;
+  close G or die "Could not run 'zcat $pathdiff': $!";
 }
 close F;
 verbose "\n";
@@ -136,7 +135,7 @@ if (1) {
 
   if (@ARGV) {
     verbose "Removing CR from %d files:\n", scalar @ARGV;
-    $^I = ";";
+    $^I = ".withCR";
     my $i = 0;
     my $b = 0;
     while (<>) {
@@ -163,13 +162,13 @@ sub unCR {
   local $/;
   open UNCR, "<$f" or die "Could not open <$f: $!";
   my $content = <UNCR>;
-  close UNCR;
+  close UNCR or die "Could not close $f: $!";
   $content =~ s/\015//g or return;
   my($dev,$inode,$mode) = stat $f;
   unlink $f or die "Could not unlink $f: $!";
   open UNCR, ">$f" or die "Could not open >$f: $!";
   print UNCR $content;
-  close UNCR;
+  close UNCR or die "Could not close $f: $!";
   chmod $mode, $f;
 }
 
@@ -193,10 +192,9 @@ for my $d ( @diffs ){
     unlink $delfile or die "Could not unlink $delfile: $!";
   }
 
-  # Now do the patches
-  # my $pout = `zcat $pathdiff | perl -ple 's/\015//' | $patchcommand 2>&1`;
-  my $pouth; # "patch-out-handle
-  open $pouth, "| $patchcommand  > tmp.patch.out 2>&1";
+  my $pouth; # "patch-out-handle"
+  my $poutf = "tmp.patch.$$.out"; # "patch-out-file"
+  open $pouth, "| $patchcommand  > $poutf 2>&1";
   while (<Z>) {
     if (/^Index: perl\/(\S+)/) {
       my $file = $1;
@@ -206,13 +204,16 @@ for my $d ( @diffs ){
     s/\015//g;
     print $pouth $_;
   }
-  close $pouth;
+  close Z or die "Could not run 'zcat $pathdiff': $!";
+  close $pouth; # may fail
+  my $poutfail = $?;
   local $/;
-  open $pouth, "tmp.patch.out" or die "Could not open tmp.patch.out: $!";
+  open $pouth, $poutf or die "Could not open $poutf: $!";
   my $pout = <$pouth>;
   close $pouth;
-  warn "\n----stdout+err patching $d (ret=$?)---\n$pout----EOF----\n" if $pout;
-  if ($? == 0) {
+  unlink $poutf or die "Could not unlink $poutf: $!";
+  warn "\n----stdout+err patching $d (ret=$poutfail)---\n$pout----EOF----\n" if $pout;
+  if ($poutfail == 0) {
     verbose "\rapplied patch # %s.%s", $d, $Opt{verbose}>0 ? "\n" : " ";
   } else {
     my $ls = `zcat $pathdiff | perl Porting/patchls -`;
@@ -248,7 +249,6 @@ for my $d ( @diffs ){
       }
     }
   }
-  close Z;
 }
 verbose "\n";
 if (@fails) {
@@ -266,6 +266,17 @@ my @rm = ExtUtils::Manifest::filecheck;
 if ($Opt{nounlink}) {
   verbose "Keeping files not in MANIFEST: @rm\n";
 } else {
+  my @testfiles;
+  if (@testfiles = grep /\.t\z/, @rm) {
+    warn "ALERT: Going to remove apparent testfile(s): @testfiles
+Maybe this MANIFEST is broken?\n";
+    print "Proceed? (y|n) [y] ";
+    my $ans = <>;
+    chomp $ans;
+    if ($ans && $ans !~ /^y/) {
+      die "Stopped";
+    }
+  }
   verbose "Removing files not in MANIFEST: @rm\n";
   unlink @rm or die "Could not unlink @rm: $!";
 }
@@ -292,39 +303,16 @@ patchaperlup - apply a couple of patches in a perl source directory
 
 =head1 DESCRIPTION
 
-This utility runs a batch of jobs that upgrade a recent development
-perl with selected patches to produce a recent development snapshot of
-perl.
+This utility runs a batch of jobs that upgrade an arbitrary source
+snapshot of perl with selected numbered patches to produce another
+snapshot of perl. It is designed to be called from other utilities
+(such as apc-buildaperl) that implement a source repository in the
+broader sense.
 
-The status of this script is alpha as the applicability of the
-assumptions about where the current patches are, how they are named
-and treated, etc. are unstable. The script is only reflecting current
-practice which is subject to change without notice.
+How to get at perl patches is described in the perlhack manpage.
 
-How to get at the patches is described in the perlhack manpage.
-
-Be careful though, Sarathy posted a recommendation:
-
-  From: Gurusamy Sarathy <gsar@ActiveState.com>
-  Subject: Re: rsync'ed patches vs. rsync'ed source 
-  Date: Wed, 01 Nov 2000 09:58:08 -0800
-
-  I'd strongly recommend sticking with rsync.
-
-  The rsync mirror is automatic and syncs with the repository every five
-  minutes.
-
-  Updating the patch area still requires manual intervention (with all
-  the goofiness that implies, which you've noted) and is typically on
-  a daily cycle.  Making this process automatic is on my tuit list,
-  but don't ask me when.
-
-I take it that for the real recent perl of the day, you should use
-rsync to the perl-current area, but if you want to track down when a
-bug was introduced or fixed, the patch repository is the natural
-choice.
-
-When you have unpacked a recent perl, patchaperlup should be run as
+When you have unpacked a perl source tarball or otherwise produced a
+source snapshot, patchaperlup should be run as
 
   perl patchaperlup --perldir perl5.5.660 --diffdir diffs
 
@@ -332,15 +320,22 @@ C<patchaperlup> checks which highest numbered patch has already been
 applied to the perl in the C<perldir>. The --upto argument defaults to
 the highest numbered patch in the directory given by the --diffdir
 argument. The --start argument defaults to the last patch referenced
-in the Changes file in the untarred perl sources.
+in the Changes file in the untarred perl sources plus one.
+
+So the above command is equivalent to something like
+
+  perl patchaperlup --perldir perl5.5.660 --diffdir diffs \
+       --start 5199 --upto 12345
+
+depending on the contents of your diffdir. (perl5.5.660 had finished
+with patch 5198.)
 
 The batch job is pretty verbose and explains what it is doing. The
-reason for the verbosity was that it can take a while until
+reason for the verbosity is that it can take a while until
 C<patchaperlup> is finishing. Verbosity can be turned off with the
 --quiet switch and increased with the --verbose switch.
 
-C<patchaperlup> prints a few mail-header-like lines to standard
-output, namely
+C<patchaperlup> prints a few mail-header-like lines to STDOUT, namely
 
   Version: version of patchaperlup
   Perldir: perl directory
@@ -348,26 +343,9 @@ output, namely
   Firstpatch: number of the first applied patch
   Lastpatch: number of the last applied patch
 
+everything else is printed to STDERR.
+
 The --version switch prints the version and exits.
-
-=head1 EXAMPLE
-
-The following shell script built today's perl and stuffed it into a
-directory of its own. Please fill in your own path to DEVPERL.
-
-  DEVPERL=perl-5.7.0
-  tar xzf /path/to/devperl/$DEVPERL.tar.gz
-  rsync -avz rsync://ftp.linux.activestate.com/diffs diffs
-  patchaperlup --perldir $DEVPERL --diffdir diffs > patchaperlup.out
-  LPATCH=`awk '$1=="Lastpatch:"{print $2}' patchaperlup.out`
-  mv $DEVPERL $DEVPERL@$LPATCH
-  cd $DEVPERL@$LPATCH && ./Configure -des && make test
-
-If all patches from the APC are merged into a single diffs directory,
-it is possible to run the above example with any DEVPERL from 5.005_58
-upwards. At the time of writing, there were some tiny patch problems
-if you do that. I'm planning to special-case them so that patchaperlup
-does not report unnecessary errors.
 
 =head1 PREREQUISITES
 
@@ -380,4 +358,3 @@ which can be found in recent perl distributions.
 Andreas Koenig <andreas.koenig@anima.de>
 
 =cut
-
