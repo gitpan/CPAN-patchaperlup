@@ -6,13 +6,13 @@ use Cwd;
 use Getopt::Long;
 use vars qw(%Opt $VERSION);
 
-$VERSION = sprintf "%.3f", (sprintf "%d.%03d", q$Revision: 1.7 $ =~ /(\d+)\.(\d+)/) - 1;
-# $Id: patchaperlup,v 1.7 2000/11/02 09:17:14 k Exp $
+$VERSION = sprintf "%.3f", (sprintf "%d.%03d", q$Revision: 1.11 $ =~ /(\d+)\.(\d+)/) - 1;
+# $Id: patchaperlup,v 1.11 2000/11/28 06:23:56 k Exp $
 
 %Opt = ();
 
 # options get and build are undocumented as they might be considered bloatware
-GetOptions( \%Opt, qw( upto=i perldir=s diffdir=s quiet! version+ verbose+) );
+GetOptions( \%Opt, qw( upto=i perldir=s diffdir=s nounlink! quiet! version+ verbose+) );
 
 sub verbose {
   return if $Opt{quiet};
@@ -31,6 +31,7 @@ sub usage () {
     [--upto    number-of-last-patch]
     [--quiet]
     [--verbose]
+    [--nounlink]
     [--version]";
 }
 
@@ -117,22 +118,28 @@ sub contains_cr {
   $firstline =~ /\cM/;
 }
 
-@ARGV = grep contains_cr($_), keys %pfiles;
+# at the time of patch 7632, some files in the repository were changed
+# to contain no CR
+if (1) {
 
-if (@ARGV) {
-  verbose "Removing CR from %d files\n", scalar @ARGV;
-  $^I = "";
-  my $i = 0;
-  my $b = 0;
-  while (<>) {
-    s/\r$//;
-    print;
-    if (eof(ARGV)){
-      verbose "\r%5d files, %6d lines", ++$i, $.;
+  @ARGV = grep contains_cr($_), keys %pfiles;
+  @ARGV = grep !m!lib/unicode/syllables.txt!, @ARGV;
+
+  if (@ARGV) {
+    verbose "Removing CR from %d files:\n", scalar @ARGV;
+    $^I = "";
+    my $i = 0;
+    my $b = 0;
+    while (<>) {
+      s/\r$//;
+      print;
+      if (eof(ARGV)){
+        verbose "%s\n", $ARGV;
+      }
     }
+    my $lines = $.;
+    verbose "\n";
   }
-  my $lines = $.;
-  verbose "\n";
 }
 my $patchcommand = sprintf(
                            "patch %s -p1 -N",
@@ -151,9 +158,9 @@ for my $d ( @diffs ){
     print $pout;
     chomp $ls;
     if ($ls eq "-: Changes") {
-      warn "Patch error on Changes file can be ignored\n";
+      warn "PAPU $d: Patch error on Changes file can be ignored\n";
     } elsif ($pout =~ /patch: \*\*\*\* Only garbage was found in the patch input./) {
-	warn "PAPU: These Only Garbage patch errors can be ignored.";
+	warn "PAPU $d: These Only Garbage patch errors can be ignored.\n";
     } else {
       warn "Problem with patch $d\n";
       push @fails, $d;
@@ -168,6 +175,16 @@ if (@fails) {
   die "Errors while patching\n";
 } else {
   print "Lastpatch: $diffs[-1]\n";
+}
+
+# Removing files not in MANIFEST
+use ExtUtils::Manifest;
+my @rm = ExtUtils::Manifest::filecheck;
+if ($Opt{nounlink}) {
+  verbose "Keeping files not in MANIFEST: @rm\n";
+} else {
+  verbose "Removing files not in MANIFEST: @rm\n";
+  unlink @rm or die "Could not unlink @rm: $!";
 }
 
 verbose qq{Now you can make a new perl by running e.g.:
