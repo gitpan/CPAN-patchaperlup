@@ -12,62 +12,48 @@ DESCRIPTION
     This utility runs a batch of jobs that upgrade a recent development perl
     with selected patches to produce a recent development snapshot of perl.
 
-    The status of this script is very alpha as the applicability of the
+    The status of this script is alpha as the applicability of the
     assumptions about where the current patches are, how they are named and
     treated, etc. are unstable. The script is only reflecting current
     practice which is subject to change without notice.
 
-    There are currently the following places to access the Archive of Perl
-    Changes (APC):
+    How to get at the patches is described in the perlhack manpage.
 
-    ftp://ftp.linux.activestate.com/pub/staff/gsar/APC/
-        A voluminous complete history of all changes since 5.005_58. The
-        00README file there is recommended for details about the status of
-        the APC.
+    Be careful though, Sarathy posted a recommendation:
 
-    rsync://ftp.linux.activestate.com/perl-current/
-        The perl-current directory of the APC.
+      From: Gurusamy Sarathy <gsar@ActiveState.com>
+      Subject: Re: rsync'ed patches vs. rsync'ed source 
+      Date: Wed, 01 Nov 2000 09:58:08 -0800
 
-    rsync://ftp.linux.activestate.com/perl-diffs/
-        The diffs directory of the APC. This contains patches for each
-        change submitted to the Perl repository since the last release.
+      I'd strongly recommend sticking with rsync.
 
-    To get a copy of today's perl you'd just do
+      The rsync mirror is automatic and syncs with the repository every five
+      minutes.
 
-      rsync -auvz rsync://ftp.linux.activestate.com/perl-current/ perl-current
+      Updating the patch area still requires manual intervention (with all
+      the goofiness that implies, which you've noted) and is typically on
+      a daily cycle.  Making this process automatic is on my tuit list,
+      but don't ask me when.
 
-    If you're hunting for a bug though, you'd like to try several different
-    recent perls. That's where you want to have the `diffs/' directory
-    mirrored and use patchapaerlup to get apply selected patches.
+    I take it that for the real recent perl of the day, you should use rsync
+    to the perl-current area, but if you want to track down when a bug was
+    introduced or fixed, the patch repository is the natural choice.
 
-    The alternative way to get today's perl is the following. Untar a recent
-    perl distribution, mirror the `diffs/' directory, run this
-    `patchaperlup' utility, and run the perl build commands as usual.
-
-    Untarring a recent perl snapshot is usually done with the tar command,
-    say
-
-      tar xvzf /local/path/to/perl5.5.660.tar.gz
-
-    Mirroring the pumpkin's patch repositury can be done with `rsync', e.g.
-
-      rsync -auvz rsync://ftp.linux.activestate.com/diffs diffs
-
-    Now patchaperlup could be run as
+    When you have unpacked a recent perl, patchaperlup should be run as
 
       perl patchaperlup --perldir perl5.5.660 --diffdir diffs
 
-    `patchaperlup' checks which highest numbered patch has already been
-    applied to the perl in the `perldir'. The --upto argument defaults to
+    'patchaperlup' checks which highest numbered patch has already been
+    applied to the perl in the 'perldir'. The --upto argument defaults to
     the highest numbered patch in the directory given by the --diffdir
     argument.
 
     The batch job is pretty verbose and explains what it is doing. The
     reason for the verbosity was that it can take a while until
-    `patchaperlup' is finishing. Verbosity can be turned off with the
+    'patchaperlup' is finishing. Verbosity can be turned off with the
     --quiet switch and increased with the --verbose switch.
 
-    `patchaperlup' prints a few mail-header-like lines to standard output,
+    'patchaperlup' prints a few mail-header-like lines to standard output,
     namely
 
       Version: version of patchaperlup
@@ -79,27 +65,26 @@ DESCRIPTION
     The --version switch prints the version and exits.
 
 EXAMPLE
-    The following shell script built that day's perl at the time of writing
-    and stuffed it into a directory of its own. Please fill in your nearest
-    CPAN site in line 2:
+    The following shell script built today's perl and stuffed it into a
+    directory of its own. Please fill in your own path to DEVPERL.
 
-      DEVPERL=perl5.5.660
-      wget -m -nd -v ftp://cpan.host.and.path/authors/id/GSAR/$DEVPERL.tar.gz
-      tar xzf $DEVPERL.tar.gz
-      rsync -auvz rsync://ftp.linux.activestate.com/diffs diffs
+      DEVPERL=perl-5.7.0
+      tar xzf /path/to/devperl/$DEVPERL.tar.gz
+      rsync -avz rsync://ftp.linux.activestate.com/diffs diffs
       patchaperlup --perldir $DEVPERL --diffdir diffs > patchaperlup.out
       LPATCH=`awk '$1=="Lastpatch:"{print $2}' patchaperlup.out`
-      mv $DEVPERL $DEVPERL..$LPATCH
-      cd $DEVPERL..$LPATCH && ./Configure -des && make test
+      mv $DEVPERL $DEVPERL@$LPATCH
+      cd $DEVPERL@$LPATCH && ./Configure -des && make test
 
     If all patches from the APC are merged into a single diffs directory, it
     is possible to run the above example with any DEVPERL from 5.005_58
-    upwards. At the time of writing lThere are some tiny patch problems if
-    you do that, I haven't investigated how serious they are.
+    upwards. At the time of writing, there were some tiny patch problems if
+    you do that. I'm planning to special-case them so that patchaperlup does
+    not report unnecessary errors.
 
 PREREQUISITES
-    The programs `zcat' and `patch' must be in your path. Likewise `perl'
-    must be available in the path to run the utility `patchls' which can be
+    The programs 'zcat' and 'patch' must be in your path. Likewise 'perl'
+    must be available in the path to run the utility 'patchls' which can be
     found in recent perl distributions.
 
 AUTHOR
