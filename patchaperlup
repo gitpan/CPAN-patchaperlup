@@ -6,8 +6,8 @@ use Cwd;
 use Getopt::Long;
 use vars qw(%Opt $VERSION);
 
-$VERSION = sprintf "%.3f", (sprintf "%d.%03d", q$Revision: 1.16 $ =~ /(\d+)\.(\d+)/) - 1;
-# $Id: patchaperlup,v 1.16 2001/06/18 23:10:25 k Exp $
+$VERSION = sprintf "%.3f", (sprintf "%d.%03d", q$Revision: 1.18 $ =~ /(\d+)\.(\d+)/) - 1;
+# $Id: patchaperlup,v 1.18 2001/09/07 13:02:04 k Exp k $
 
 %Opt = ();
 
@@ -156,6 +156,23 @@ my $patchcommand = sprintf(
                            $Opt{verbose}>0 ? "" : "-s"
                           );
 
+sub unCR {
+  my($f) = shift;
+  return unless -f $f;
+  local *UNCR;
+  local $/;
+  open UNCR, "<$f" or die "Could not open <$f: $!";
+  my $content = <UNCR>;
+  close UNCR;
+  $content =~ s/\015//g or return;
+  my($dev,$inode,$mode) = stat $f;
+  unlink $f or die "Could not unlink $f: $!";
+  open UNCR, ">$f" or die "Could not open >$f: $!";
+  print UNCR $content;
+  close UNCR;
+  chmod $mode, $f;
+}
+
 for my $d ( @diffs ){
   my $pathdiff = "$diffdir_abs/$d.gz";
   verbose "\rapplying %s # for %d\n", $patchcommand, $d
@@ -175,40 +192,58 @@ for my $d ( @diffs ){
     }
     unlink $delfile or die "Could not unlink $delfile: $!";
   }
-  close Z;
 
   # Now do the patches
-  my $pout = `zcat $pathdiff | $patchcommand 2>&1`;
+  # my $pout = `zcat $pathdiff | perl -ple 's/\015//' | $patchcommand 2>&1`;
+  my $pouth;
+  open $pouth, "| $patchcommand 2>&1 > tmp.patch.out";
+  while (<Z>) {
+    if (/^Index: perl\/(\S+)/) {
+      my $file = $1;
+      unCR($file);
+      next;
+    }
+    s/\015//g;
+    print $pouth $_;
+  }
+  close $pouth;
+  local $/;
+  open $pouth, "tmp.patch.out" or die "Could not open tmp.patch.out: $!";
+  my $pout = <$pouth>;
+  close $pouth;
+  warn $pout if $pout;
   if ($? == 0) {
     verbose "\rapplied patch # %s.%s", $d, $Opt{verbose}>0 ? "\n" : " ";
   } else {
     my $ls = `zcat $pathdiff | perl Porting/patchls -`;
-    print $pout;
     chomp $ls;
     if ($ls eq "-: Changes") {
       warn "PAPU $d: Patch error on Changes file can be ignored\n";
     } elsif ($pout =~ /patch: \*\*\*\* Only garbage was found in the patch input./) {
       warn "PAPU $d: These Only Garbage patch errors can be ignored.\n";
+    } elsif ($pout =~ /Reversed .* patch detected!/ && ($d - $already_patched)<4) {
+      warn "PAPU $d: Reversed patches immediately after a snapshot indicate the failure is likely to be an artifact. Error ignored.\n";
     } else {
-      my @rej;
-      while ($pout =~ /saving rejects to (\S+).rej/gc){
-        push @rej, $1;
+      my @rej1;
+      while ($pout =~ /saving rejects to (?:file )?(\S+)\.rej/gc){
+        push @rej1, $1;
       }
 
       my %rej;
-      @rej{@rej}=();
+      @rej{@rej1}=();
       for my $f (qw(Changes patchlevel.h)) {
         delete $rej{$f};
       }
-
-      if (%rej) {
-        warn "Problem with patch $d\n";
+      my @rej2 = keys %rej;
+      if (@rej2) {
+        warn "Problem with patch $d (files: @rej2)\n";
         push @fails, $d;
-      } else {
-        warn "PAPU $d: Rejects were only on [@rej]: these can usually be ignored\n";
+      } elsif (@rej1) {
+        warn "PAPU $d: Rejects were only on [@rej1]: these can usually be ignored\n";
       }
     }
   }
+  close Z;
 }
 verbose "\n";
 if (@fails) {
