@@ -6,8 +6,8 @@ use Cwd;
 use Getopt::Long;
 use vars qw(%Opt $VERSION);
 
-$VERSION = sprintf "%.3f", (sprintf "%d.%03d", q$Revision: 1.14 $ =~ /(\d+)\.(\d+)/) - 1;
-# $Id: patchaperlup,v 1.14 2001/05/23 06:03:12 k Exp k $
+$VERSION = sprintf "%.3f", (sprintf "%d.%03d", q$Revision: 1.16 $ =~ /(\d+)\.(\d+)/) - 1;
+# $Id: patchaperlup,v 1.16 2001/06/18 23:10:25 k Exp $
 
 %Opt = ();
 
@@ -158,8 +158,26 @@ my $patchcommand = sprintf(
 
 for my $d ( @diffs ){
   my $pathdiff = "$diffdir_abs/$d.gz";
-  verbose "\rapplying patch # %s.\n", $d if $Opt{verbose}>0;
+  verbose "\rapplying %s # for %d\n", $patchcommand, $d
+        if $Opt{verbose}>0;
   print "Firstpatch: $d\n" if $d==$diffs[0];
+
+  # First do the deletes, they are not line by line in the patches
+  local *Z;
+  open Z, "zcat $pathdiff |";
+  while (<Z>) {
+    last if /^Differences\s/;
+    next unless m{^\s*\.\.\. //.+perl/(.+)#\d+ delete$};
+    my $delfile = $1;
+    unless (-f $delfile){
+      warn "PAPU warning: Could not find $delfile for deletion, ignoring";
+      next;
+    }
+    unlink $delfile or die "Could not unlink $delfile: $!";
+  }
+  close Z;
+
+  # Now do the patches
   my $pout = `zcat $pathdiff | $patchcommand 2>&1`;
   if ($? == 0) {
     verbose "\rapplied patch # %s.%s", $d, $Opt{verbose}>0 ? "\n" : " ";
