@@ -6,8 +6,8 @@ use Cwd;
 use Getopt::Long;
 use vars qw(%Opt $VERSION);
 
-$VERSION = sprintf "%.3f", (sprintf "%d.%03d", q$Revision: 1.18 $ =~ /(\d+)\.(\d+)/) - 1;
-# $Id: patchaperlup,v 1.18 2001/09/07 13:02:04 k Exp k $
+$VERSION = sprintf "%.3f", (sprintf "%d.%03d", q$Revision: 1.19 $ =~ /(\d+)\.(\d+)/) - 1;
+# $Id: patchaperlup,v 1.19 2001/09/24 09:11:59 k Exp k $
 
 %Opt = ();
 
@@ -196,7 +196,7 @@ for my $d ( @diffs ){
   # Now do the patches
   # my $pout = `zcat $pathdiff | perl -ple 's/\015//' | $patchcommand 2>&1`;
   my $pouth;
-  open $pouth, "| $patchcommand 2>&1 > tmp.patch.out";
+  open $pouth, "| $patchcommand  > tmp.patch.out 2>&1";
   while (<Z>) {
     if (/^Index: perl\/(\S+)/) {
       my $file = $1;
@@ -211,7 +211,7 @@ for my $d ( @diffs ){
   open $pouth, "tmp.patch.out" or die "Could not open tmp.patch.out: $!";
   my $pout = <$pouth>;
   close $pouth;
-  warn $pout if $pout;
+  warn "----tmp.patch.out---\n$pout----EOF----\n" if $pout;
   if ($? == 0) {
     verbose "\rapplied patch # %s.%s", $d, $Opt{verbose}>0 ? "\n" : " ";
   } else {
